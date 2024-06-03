@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>src.data_handling.pdf_parser &#8212; Edulytica 0.0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d1102ebc" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=12dfc556" />
+    <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for src.data_handling.pdf_parser</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">csv</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+
+<span class="kn">import</span> <span class="nn">pdfminer.pdfparser</span>
+<span class="kn">import</span> <span class="nn">pdfplumber</span>
+<span class="kn">from</span> <span class="nn">pdfminer.high_level</span> <span class="kn">import</span> <span class="n">extract_pages</span>
+<span class="kn">from</span> <span class="nn">pdfminer.layout</span> <span class="kn">import</span> <span class="n">LTTextContainer</span><span class="p">,</span> <span class="n">LTRect</span><span class="p">,</span> <span class="n">LTChar</span>
+
+<span class="n">csv</span><span class="o">.</span><span class="n">field_size_limit</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">maxsize</span> <span class="o">//</span> <span class="mf">1e13</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="PDFParser">
+<a class="viewcode-back" href="../../../src.data_handling.html#src.data_handling.pdf_parser.PDFParser">[docs]</a>
+<span class="k">class</span> <span class="nc">PDFParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse text from pdf to csv&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">intro_strs</span> <span class="o">=</span> <span class="s1">&#39;введение&#39;</span><span class="p">,</span> <span class="s1">&#39;introduction&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">origins_strs</span> <span class="o">=</span> <span class="s1">&#39;источник&#39;</span><span class="p">,</span> <span class="s1">&#39;литератур&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lines_to_title_check</span> <span class="o">=</span> <span class="mi">10</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">csv_filename</span> <span class="o">=</span> <span class="s1">&#39;pdfs_data.csv&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoding</span> <span class="o">=</span> <span class="s1">&#39;utf-8&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">file_format</span> <span class="o">=</span> <span class="s1">&#39;.pdf&#39;</span>
+
+<div class="viewcode-block" id="PDFParser.parse_files">
+<a class="viewcode-back" href="../../../src.data_handling.html#src.data_handling.pdf_parser.PDFParser.parse_files">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pdfs_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="n">csv_filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">clear_csv</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse all pdfs in directory and save to csv file</span>
+
+<span class="sd">        :param pdfs_directory: directory where pdfs located</span>
+<span class="sd">        :param csv_filename: result csv file</span>
+<span class="sd">        :param clear_csv: whether to clear the result csv file</span>
+<span class="sd">        :return None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">csv_filename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">csv_filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">csv_filename</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">clear_csv</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">clear_csv</span><span class="p">(</span><span class="n">csv_filename</span><span class="p">)</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">csv_filename</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">encoding</span><span class="p">)</span> <span class="k">as</span> <span class="n">csvfile</span><span class="p">:</span>
+                    <span class="n">pdf_reader</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">reader</span><span class="p">(</span><span class="n">csvfile</span><span class="p">)</span>
+                    <span class="n">pdfs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">pdf_reader</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+                <span class="n">pdfs</span> <span class="o">=</span> <span class="p">{}</span>
+
+            <span class="n">pdf_filenames</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="o">-</span><span class="mi">4</span><span class="p">:]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_format</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">pdfs_directory</span><span class="p">)))</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">pdf_filename</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pdf_filenames</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">pdf_filename</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39; &#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">pdf_filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span> <span class="ow">in</span> <span class="n">pdfs</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">pdfs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pdf_filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]):</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;skipped&#39;</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">pdfs</span><span class="p">[</span><span class="n">pdf_filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_file</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">pdfs_directory</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="n">pdf_filename</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;replaced&#39;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">pdfs</span><span class="p">[</span><span class="n">pdf_filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_file</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">pdfs_directory</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="n">pdf_filename</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;done&#39;</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="n">pdfminer</span><span class="o">.</span><span class="n">pdfparser</span><span class="o">.</span><span class="n">PDFSyntaxError</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;pdf can not be opened&#39;</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">csv_filename</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">csv_file</span><span class="p">:</span>
+                <span class="n">writer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">writer</span><span class="p">(</span><span class="n">csv_file</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">pdf_filename</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">pdfs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                        <span class="n">writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">((</span><span class="n">pdf_filename</span><span class="p">,</span> <span class="n">data</span><span class="p">))</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">data saved&#39;</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">UnboundLocalError</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;pdfs data is empty&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PDFParser.parse_file">
+<a class="viewcode-back" href="../../../src.data_handling.html#src.data_handling.pdf_parser.PDFParser.parse_file">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pdf_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse pdf file and return it contains as a string without pages before a introduction and used references page</span>
+
+<span class="sd">        :param pdf_path: path to pdf file</span>
+<span class="sd">        :return: string containing pdf</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">pages</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">has_intro</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">page_num</span><span class="p">,</span> <span class="n">page</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">extract_pages</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">))):</span>
+            <span class="n">text_from_tables</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">page_content</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">table_num</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">first_element_flag</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">table_extraction_flag</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">pdf</span> <span class="o">=</span> <span class="n">pdfplumber</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span>
+            <span class="n">page_tables</span> <span class="o">=</span> <span class="n">pdf</span><span class="o">.</span><span class="n">pages</span><span class="p">[</span><span class="n">page_num</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">tables</span> <span class="o">=</span> <span class="n">page_tables</span><span class="o">.</span><span class="n">find_tables</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+            <span class="n">page_elements</span> <span class="o">=</span> <span class="p">[(</span><span class="n">element</span><span class="o">.</span><span class="n">y1</span><span class="p">,</span> <span class="n">element</span><span class="p">)</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">page</span><span class="o">.</span><span class="n">_objs</span><span class="p">]</span>
+            <span class="n">page_elements</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="o">-</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+            <span class="n">lower_side</span><span class="p">,</span> <span class="n">upper_side</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">page_elements</span><span class="p">))):</span>
+                <span class="n">first_element</span> <span class="o">=</span> <span class="n">page_elements</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first_element</span><span class="p">,</span> <span class="n">LTTextContainer</span><span class="p">):</span>
+                    <span class="n">line_text</span><span class="p">,</span> <span class="n">format_for_line</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_text</span><span class="p">(</span><span class="n">first_element</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">form</span> <span class="ow">in</span> <span class="n">format_for_line</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">form</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;bold&#39;</span> <span class="ow">in</span> <span class="n">form</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+                            <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">intro_str</span> <span class="ow">in</span> <span class="n">line_text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">intro_str</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">intro_strs</span><span class="p">):</span>
+                                <span class="n">has_intro</span> <span class="o">=</span> <span class="kc">True</span>
+                            <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">origins_str</span> <span class="ow">in</span> <span class="n">line_text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">origins_str</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">origins_strs</span><span class="p">):</span>
+                                <span class="k">return</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">row</span> <span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="n">pages</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">page</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\0</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">page_num</span> <span class="o">&gt;=</span> <span class="mi">10</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="s1">&#39;none&#39;</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">has_intro</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">component</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">page_elements</span><span class="p">):</span>
+                <span class="n">element</span> <span class="o">=</span> <span class="n">component</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">LTTextContainer</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">table_extraction_flag</span><span class="p">:</span>
+                        <span class="n">line_text</span><span class="p">,</span> <span class="n">format_for_line</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_text</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+                        <span class="n">page_content</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line_text</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">LTRect</span><span class="p">)</span> <span class="ow">and</span> <span class="n">table_num</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">tables</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">first_element_flag</span><span class="p">:</span>
+                        <span class="n">lower_side</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">bbox</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">tables</span><span class="p">[</span><span class="n">table_num</span><span class="p">]</span><span class="o">.</span><span class="n">bbox</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+                        <span class="n">upper_side</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">y1</span>
+                        <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_extract_table</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">,</span> <span class="n">page_num</span><span class="p">,</span> <span class="n">table_num</span><span class="p">)</span>
+                        <span class="n">table_string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_table_converter</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+                        <span class="n">text_from_tables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">table_string</span><span class="p">)</span>
+                        <span class="n">page_content</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">table_string</span><span class="p">)</span>
+                        <span class="n">table_extraction_flag</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">first_element_flag</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">if</span> <span class="n">element</span><span class="o">.</span><span class="n">y0</span> <span class="o">&gt;=</span> <span class="n">lower_side</span> <span class="ow">and</span> <span class="n">element</span><span class="o">.</span><span class="n">y1</span> <span class="o">&lt;=</span> <span class="n">upper_side</span><span class="p">:</span>
+                        <span class="k">pass</span>
+                    <span class="k">elif</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">page_elements</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_elements</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">LTRect</span><span class="p">):</span>
+                        <span class="n">table_extraction_flag</span> <span class="o">=</span> <span class="kc">False</span>
+                        <span class="n">first_element_flag</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">table_num</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">pages</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_content</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">row</span> <span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="n">pages</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">page</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\0</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PDFParser.parse_table_of_contents">
+<a class="viewcode-back" href="../../../src.data_handling.html#src.data_handling.pdf_parser.PDFParser.parse_table_of_contents">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_table_of_contents</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pdf_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="k">pass</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_extract_text</span><span class="p">(</span><span class="n">element</span><span class="p">:</span> <span class="n">LTTextContainer</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Extract text from LTRect object</span>
+
+<span class="sd">        :param element: LTRect object</span>
+<span class="sd">        :return: tuple with the string of extracted text and format of extracted text</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">line_text</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span>
+        <span class="n">line_formats</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">text_line</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">text_line</span><span class="p">,</span> <span class="n">LTTextContainer</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">character</span> <span class="ow">in</span> <span class="n">text_line</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">character</span><span class="p">,</span> <span class="n">LTChar</span><span class="p">):</span>
+                        <span class="n">line_formats</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">character</span><span class="o">.</span><span class="n">fontname</span><span class="p">)</span>
+                        <span class="n">line_formats</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">character</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+        <span class="n">format_per_line</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">line_formats</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">line_text</span><span class="p">,</span> <span class="n">format_per_line</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_extract_table</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">,</span> <span class="n">page_num</span><span class="p">,</span> <span class="n">table_num</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Extract table from pdf file</span>
+
+<span class="sd">        :param pdf_path: path to pdf file</span>
+<span class="sd">        :param page_num: page index</span>
+<span class="sd">        :param table_num: number of table on page</span>
+<span class="sd">        :return: table object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="n">pdfplumber</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span><span class="o">.</span><span class="n">pages</span><span class="p">[</span><span class="n">page_num</span><span class="p">]</span><span class="o">.</span><span class="n">extract_tables</span><span class="p">()[</span><span class="n">table_num</span><span class="p">]</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_table_converter</span><span class="p">(</span><span class="n">table</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert table to string</span>
+
+<span class="sd">        :param table: table object</span>
+<span class="sd">        :return: table as a string</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">table_string</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+        <span class="k">for</span> <span class="n">row_num</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">table</span><span class="p">)):</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="n">row_num</span><span class="p">]</span>
+            <span class="n">cleansed_row</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">item</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">item</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="ow">in</span> <span class="n">item</span> <span class="k">else</span> <span class="s1">&#39;None&#39;</span> <span class="k">if</span> <span class="n">item</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">item</span> <span class="k">for</span>
+                <span class="n">item</span> <span class="ow">in</span> <span class="n">row</span><span class="p">]</span>
+            <span class="n">table_string</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cleansed_row</span><span class="p">)</span><span class="si">}</span><span class="s2"> </span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="k">return</span> <span class="n">table_string</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+<div class="viewcode-block" id="PDFParser.clear_csv">
+<a class="viewcode-back" href="../../../src.data_handling.html#src.data_handling.pdf_parser.PDFParser.clear_csv">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">clear_csv</span><span class="p">(</span><span class="n">csv_filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Clear csv file</span>
+
+<span class="sd">        :param csv_filename: csv file name</span>
+<span class="sd">        :return: None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="nb">open</span><span class="p">(</span><span class="n">csv_filename</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+</div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">pdf_parser</span> <span class="o">=</span> <span class="n">PDFParser</span><span class="p">()</span>
+    <span class="n">pdf_parser</span><span class="o">.</span><span class="n">parse_files</span><span class="p">(</span><span class="s1">&#39;../../../VKRsData&#39;</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">Edulytica</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, Edulytica Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 7.3.7</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
